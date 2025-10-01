@@ -298,3 +298,4 @@ def bench_flash_attention(BATCH, H, N_CTX, D_HEAD, causal, mode, provider, dtype
 test_op(2, 2, 2**11, 64, shared_kv_prefix=True)
 test_op(2, 2, 2**11, 64, shared_kv_prefix=False)
 bench_flash_attention.run(save_path=".", print_data=True)
+#test
