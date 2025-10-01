@@ -1,6 +1,6 @@
 ## Fused Sparse Tree (FST) Attention — Triton Kernel
 
-This project implements Fused Sparse Tree (FST) Attention as a custom Triton kernel for NVIDIA GPUs. It accelerates attention by loading only shared ancestors and leaf nodes per query in a tree structure, optionally combining with a fully shared KV prefix. The repo also includes a simple correctness test against dense masked attention and a performance benchmark comparing with FlashAttention-2 (optional).
+This project implements Fused Sparse Tree (FST) Attention as a custom Triton kernel for NVIDIA GPUs. It accelerates attention by loading only shared ancestors and leaf nodes per query in a tree structure, optionally combining with a fully shared KV prefix. The repo also includes a simple correctness test against dense masked attention and a performance benchmark comparing with FlashAttention-2.
 
 ### Features
 - FST attention forward kernel written in Triton
