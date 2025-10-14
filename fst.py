@@ -149,3 +149,33 @@ def _fwd_kernel(Q, K, V,
         order=(1, 0),
     )
     tl.store(O_block_ptr, acc.to(K.dtype.element_ty))
+
+def fst_attention(q, k, v, ancestor_idx, ancestor_mask, leaf_idx, sm_scale, BLOCK_M=128, MAX_ANCESTORS=64):
+    # shape constraints
+    Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]
+    assert Lq == Lk and Lk == Lv
+    assert Lk in {16, 32, 64, 128}
+    o = torch.empty_like(q)
+    grid = (cdiv(q.shape[2], BLOCK_M), q.shape[0] * q.shape[1], 1)
+    L = torch.empty((q.shape[0] * q.shape[1], q.shape[2]), device=q.device, dtype=torch.float32)
+    num_warps = 4 if Lk <= 64 else 8
+
+    shared_prefix_length = k.shape[2] - q.shape[2]
+    _fwd_kernel[grid](
+        q, k, v, ancestor_idx, ancestor_mask, leaf_idx, shared_prefix_length, sm_scale,  #
+        L,  #
+        o,  #
+        q.stride(0), q.stride(1), q.stride(2), q.stride(3),  #
+        k.stride(0), k.stride(1), k.stride(2), k.stride(3),  #
+        v.stride(0), v.stride(1), v.stride(2), v.stride(3),  #
+        o.stride(0), o.stride(1), o.stride(2), o.stride(3),  #
+        ancestor_idx.stride(0), ancestor_idx.stride(1), #
+        ancestor_mask.stride(0), ancestor_mask.stride(1), ancestor_mask.stride(2), #
+        leaf_idx.stride(0), leaf_idx.stride(1), #
+        q.shape[0], q.shape[1], q.shape[2],  #
+        q.shape[0] * q.shape[1] * q.shape[2],  #
+        BLOCK_M=BLOCK_M, MAX_ANCESTORS=MAX_ANCESTORS, BLOCK_DMODEL=Lk,  #
+        num_warps=num_warps,  #
+        num_stages=4  #
+    )
+    return o
