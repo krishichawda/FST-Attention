@@ -294,3 +294,7 @@ def bench_flash_attention(BATCH, H, N_CTX, D_HEAD, causal, mode, provider, dtype
         fn = lambda: flash_attn_func(qkv, causal=causal)
         ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
     return ms
+
+test_op(2, 2, 2**11, 64, shared_kv_prefix=True)
+test_op(2, 2, 2**11, 64, shared_kv_prefix=False)
+bench_flash_attention.run(save_path=".", print_data=True)
