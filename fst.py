@@ -226,3 +226,11 @@ def test_op(Z, H, N_CTX, D_HEAD, shared_kv_prefix=True, dtype=torch.float16):
 
     # compare (ignore last 4 since we added padding)
     assert torch.allclose(ref_out[:, :, :-4], tri_out[:, :, :-4], atol=1e-2, rtol=0)
+
+
+try:
+    from flash_attn.flash_attn_interface import \
+        flash_attn_qkvpacked_func as flash_attn_func
+    HAS_FLASH = True
+except BaseException:
+    HAS_FLASH = False
