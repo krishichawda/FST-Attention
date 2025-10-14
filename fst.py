@@ -234,3 +234,28 @@ try:
     HAS_FLASH = True
 except BaseException:
     HAS_FLASH = False
+
+TORCH_HAS_FP8 = hasattr(torch, 'float8_e5m2')
+# TORCH_HAS_FP8 = False
+BATCH, N_HEADS, N_CTX, D_HEAD = 4, 48, 4096, 64
+# vary seq length for fixed head and batch=4
+configs = []
+configs.append(
+    triton.testing.Benchmark(
+        x_names=["N_CTX"],
+        x_vals=[2**i for i in range(10, 17)],
+        line_arg="provider",
+        line_vals=["fst"] + (["flash"] if HAS_FLASH else []),
+        line_names=["Fused Sparse Tree"] + (["Flash-2"] if HAS_FLASH else []),
+        styles=[("red", "-"), ("blue", "-")],
+        ylabel="Wall Time (ms)",
+        plot_name=f"fused-attention-batch{BATCH}-head{N_HEADS}-d{D_HEAD}-{'fwd'}-causal={True}",
+        args={
+            "H": N_HEADS,
+            "BATCH": BATCH,
+            "D_HEAD": D_HEAD,
+            "dtype": torch.float16,
+            "mode": 'fwd',
+            "causal": True,
+        },
+    ))
