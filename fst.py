@@ -259,3 +259,38 @@ configs.append(
             "causal": True,
         },
     ))
+
+@triton.testing.perf_report(configs)
+def bench_flash_attention(BATCH, H, N_CTX, D_HEAD, causal, mode, provider, dtype=torch.float16, device="cuda"):
+    assert mode in ["fwd", "bwd"]
+    warmup = 25
+    rep = 100
+    if provider == "fst":
+        q = torch.randn((BATCH, H, N_CTX, D_HEAD), dtype=dtype, device="cuda", requires_grad=True)
+        k = torch.randn((BATCH, H, N_CTX, D_HEAD), dtype=dtype, device="cuda", requires_grad=True)
+        v = torch.randn((BATCH, H, N_CTX, D_HEAD), dtype=dtype, device="cuda", requires_grad=True)
+        sm_scale = 1.3
+
+        lineage, level_lookup = create_tree(depth=DEPTH_MAPPING[N_CTX])
+        BLOCK_M = 128
+        MAX_ANCESTORS = MAX_ANCESTOR_MAPPING[N_CTX]
+        ancestor_idx, ancestor_mask, leaf_idx = create_fst_attention_kernel_inputs(
+            lineage,
+            level_lookup,
+            block_m=BLOCK_M,
+            max_ancestors=MAX_ANCESTORS
+        )
+
+        ancestor_idx = ancestor_idx.to('cuda')
+        ancestor_mask = ancestor_mask.to('cuda')
+        leaf_idx = leaf_idx.to('cuda')
+        fn = lambda: fst_attention(q, k, v, ancestor_idx, ancestor_mask, leaf_idx, sm_scale, BLOCK_M=BLOCK_M, MAX_ANCESTORS=MAX_ANCESTORS)
+        ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+    if provider == "flash":
+        qkv = torch.randn((BATCH, N_CTX, 3, H, D_HEAD), dtype=dtype, device=device, requires_grad=True)
+        # This doesn't compute the same output, since we're not applying the tree mask, but it compares
+        #   1) the speed of only loading KVs for shared ancestors + self (fstattention)
+        #   2) the speed of loading all causal KVs (flashattention)
+        fn = lambda: flash_attn_func(qkv, causal=causal)
+        ms = triton.testing.do_bench(fn, warmup=warmup, rep=rep)
+    return ms
