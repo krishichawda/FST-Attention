@@ -179,3 +179,50 @@ def fst_attention(q, k, v, ancestor_idx, ancestor_mask, leaf_idx, sm_scale, BLOC
         num_stages=4  #
     )
     return o
+
+def test_op(Z, H, N_CTX, D_HEAD, shared_kv_prefix=True, dtype=torch.float16):
+    torch.manual_seed(20)
+    # Query tree of size N_CTX
+    q = (torch.empty((Z, H, N_CTX, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.0, std=0.5).requires_grad_())
+    if shared_kv_prefix:
+      # KV tree of size N_CTX + fully shared (by all tree queries) KV prefix of size N_CTX
+      k = (torch.empty((Z, H, 2 * N_CTX, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.0, std=0.5).requires_grad_())
+      v = (torch.empty((Z, H, 2 * N_CTX, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.0, std=0.5).requires_grad_())
+    else:
+      k = (torch.empty((Z, H, N_CTX, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.0, std=0.5).requires_grad_())
+      v = (torch.empty((Z, H, N_CTX, D_HEAD), dtype=dtype, device="cuda").normal_(mean=0.0, std=0.5).requires_grad_())
+    sm_scale = 0.5
+
+    lineage, level_lookup = create_tree(depth=DEPTH_MAPPING[N_CTX])
+    full_mask = create_full_attention_mask(lineage)
+    BLOCK_M = 128
+    MAX_ANCESTORS = MAX_ANCESTOR_MAPPING[N_CTX]
+    ancestor_idx, ancestor_mask, leaf_idx = create_fst_attention_kernel_inputs(
+        lineage,
+        level_lookup,
+        block_m=BLOCK_M,
+        max_ancestors=MAX_ANCESTORS
+    )
+
+    if shared_kv_prefix:
+      # Full attention to shared prefix
+      full_mask = torch.cat((torch.ones((N_CTX, N_CTX), dtype=torch.bool), full_mask), dim=1)
+      # Shift to account for the shared prefix
+      ancestor_idx += N_CTX
+      leaf_idx += N_CTX
+
+    # reference implementation
+    M = full_mask.to('cuda')
+    p = torch.matmul(q, k.transpose(2, 3)) * sm_scale
+    p[:, :, M == 0] = float("-inf")
+    p = torch.softmax(p.float(), dim=-1).half()
+    ref_out = torch.matmul(p, v)
+
+    # triton implementation
+    ancestor_idx = ancestor_idx.to('cuda')
+    ancestor_mask = ancestor_mask.to('cuda')
+    leaf_idx = leaf_idx.to('cuda')
+    tri_out = fst_attention(q, k, v, ancestor_idx, ancestor_mask, leaf_idx, sm_scale).half()
+
+    # compare (ignore last 4 since we added padding)
+    assert torch.allclose(ref_out[:, :, :-4], tri_out[:, :, :-4], atol=1e-2, rtol=0)
