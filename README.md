@@ -63,10 +63,3 @@ If you use a different CUDA version, adjust the PyTorch and FlashAttention insta
 - The benchmark uses Triton testing utilities; results will vary by GPU, driver, and PyTorch/Triton versions.
 - Ensure the `utils` module matches the expected API; otherwise, provide your own implementations for the tree construction helpers.
 
-### Troubleshooting
-- If Triton compilation fails, ensure you are on a supported CUDA driver and using the nightly Triton as referenced in `fst.py` comments.
-- If FlashAttention import fails, it will simply be disabled in the benchmark; install it only if you need the comparison.
-- For shape or device errors, verify that Q/K/V and index tensors are all on the CUDA device and have compatible shapes.
-
-### License
-This project adapts parts of the Triton fused attention tutorial (see link in `fst.py`). Add a license file if you plan to distribute.
